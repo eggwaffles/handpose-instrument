@@ -2,10 +2,11 @@ let handPose;
 let video;
 let hands = [];
 
-let osc;
+let oscillators = [];
 let playing = false;
 let instrument = 0;
-let audioStarted = false; // Flag to ensure audio starts only once
+let audioStarted = false;
+let graphicsLayer;
 
 function preload() {
   // Load the handPose model
@@ -14,16 +15,26 @@ function preload() {
 
 function setup() {
   createCanvas(640, 480);
+  // Create a separate graphics layer
+  graphicsLayer = createGraphics(640, 480);
+
   // Create the webcam video and hide it
   video = createCapture(VIDEO);
   video.size(640, 480);
   video.hide();
+
   // Start detecting hands from the webcam video
   handPose.detectStart(video, gotHands);
 
-  // Create an oscillator to make the synth sound
-  osc = new p5.Oscillator('sine');
-  osc.amp(0); // Set initial amplitude to 0 to prevent sound at startup
+  // Create oscillators for a chord (C major: C, E, G notes)
+  let frequencies = [261.63, 329.63, 392.00]; // C, E, G in Hz
+  for (let i = 0; i < frequencies.length; i++) {
+    let osc = new p5.Oscillator('sine');
+    osc.freq(frequencies[i]);
+    osc.amp(0);  // Set initial amplitude to 0
+    osc.start(); // Start the oscillator but set amplitude to 0 to avoid sound on startup
+    oscillators.push(osc);
+  }
 
   textSize(24);
   textAlign(CENTER, CENTER);
@@ -57,39 +68,56 @@ function draw() {
     instrument = 0;
   }
 
-  playSynth(instrument);
-
-  // Display instruction if audio hasn't started
-  if (!audioStarted) {
-    fill(255, 0, 0);
-    text('Click to start audio', width / 2, height / 2);
+  // Play or stop the synth based on the detected gesture
+  if (instrument === 1) {
+    playSynth();
+  } else {
+    stopSynth();
   }
+
+  // If audio hasn't started, display the instruction on the separate graphics layer
+  if (!audioStarted) {
+    graphicsLayer.clear(); // Clear previous frame
+    translate(width, 0);
+    scale(-1.0, 1.0);
+    graphicsLayer.fill(255, 255, 255);
+    graphicsLayer.textSize(24);
+    graphicsLayer.textAlign(CENTER, CENTER);
+    graphicsLayer.text('Click to start', width / 2, height / 2);
+  } else {
+    graphicsLayer.clear(); // Clear the message once audio starts
+  }
+
+  // Draw the graphics layer on top of the main canvas
+  image(graphicsLayer, 0, 0);
 }
 
-function playSynth(instrument) {
-  if (instrument === 0) {
-    stopSynth();
-  } else if (instrument === 1) {
-    if (!playing || osc.getType() !== 'sine') {
-      osc.setType('sine');
-      osc.freq(440); // Frequency for the sine wave
-      osc.amp(0.5, 0.05); // Fade in amplitude to 0.5 over 0.05 seconds
-      playing = true;
+function playSynth() {
+  let indexDistance = calculateIndexTipDistance();
+
+  if (indexDistance !== null) {
+    let { dx, dy } = indexDistance;
+
+    // Assuming a distance between 0 and 300 pixels for the mapping
+    let volume = map(-dx, 50, 300, 0.1, 0.8);
+    volume = constrain(volume, 0, 0.8); // Make sure volume is within a safe range
+
+    for (let i = 0; i < oscillators.length; i++) {
+      oscillators[i].amp(volume, 0.1); // Adjust the volume smoothly over 0.1 seconds
     }
-  } else if (instrument === 2) {
-    if (!playing || osc.getType() !== 'square') {
-      osc.setType('square');
-      osc.freq(660); // Frequency for the square wave
-      osc.amp(0.5, 0.05); // Fade in amplitude to 0.5 over 0.05 seconds
-      playing = true;
-    }
+  }
+
+  if (!playing) {
+    playing = true;
   }
 }
 
 // Function to stop the synth sound
 function stopSynth() {
   if (playing) {
-    osc.amp(0, 0.05); // Fade out amplitude to 0 over 0.05 seconds
+    for (let i = 0; i < oscillators.length; i++) {
+      oscillators[i].amp(0, 0.8); // Fade out amplitude to 0 over 0.05 seconds
+    }
     playing = false;
   }
 }
@@ -182,6 +210,74 @@ function isLeftPalmOpen() {
   return false;
 }
 
+function countRightHandFingersUp() {
+  for (let i = 0; i < hands.length; i++) {
+    let hand = hands[i];
+
+    // Check if the hand is the right hand (mirrored, i.e., actually the right hand)
+    if (hand.handedness === "Left") {
+      let fingerTips = [
+        "index_finger_tip",
+        "middle_finger_tip",
+        "ring_finger_tip",
+        //"pinky_tip"
+      ];
+
+      let fingerBases = [
+        "index_finger_mcp",
+        "middle_finger_mcp",
+        "ring_finger_mcp",
+        //"pinky_mcp"
+      ];
+
+      let fingersUp = 0;
+
+      // Check each finger (index, middle, ring, pinky) to see if it's raised
+      for (let j = 0; j < fingerTips.length; j++) {
+        let tip = hand.keypoints.find(point => point.name === fingerTips[j]);
+        let base = hand.keypoints.find(point => point.name === fingerBases[j]);
+
+        if (tip && base && tip.y < base.y) {
+          fingersUp++;
+        }
+      }
+
+      // Assign and return a number from 0 to 4 based on how many fingers are up (excluding the thumb)
+      return fingersUp; // This will be a number between 0 and 4
+    }
+  }
+
+  return 0; // Default to 0 if no right hand is detected or no fingers are up
+}
+
+function calculateIndexTipDistance() {
+  let leftIndexTip = null;
+  let rightIndexTip = null;
+
+  for (let i = 0; i < hands.length; i++) {
+    let hand = hands[i];
+
+    // Determine which hand is being processed
+    if (hand.handedness === "Right") {
+      // This is actually the left hand due to mirroring
+      leftIndexTip = hand.keypoints.find(point => point.name === "index_finger_tip");
+    } else if (hand.handedness === "Left") {
+      // This is actually the right hand due to mirroring
+      rightIndexTip = hand.keypoints.find(point => point.name === "index_finger_tip");
+    }
+  }
+
+  // Calculate dx and dy if both index tips are detected
+  if (leftIndexTip && rightIndexTip) {
+    let dx = rightIndexTip.x - leftIndexTip.x;
+    let dy = rightIndexTip.y - leftIndexTip.y;
+    return { dx, dy };
+  } else {
+    // Return null if one or both hands are not detected
+    return null;
+  }
+}
+
 // Callback function when hands are detected
 function gotHands(results) {
   hands = results;
@@ -191,7 +287,6 @@ function gotHands(results) {
 function mousePressed() {
   if (!audioStarted) {
     userStartAudio();
-    osc.start();
     audioStarted = true;
   }
 }
@@ -200,8 +295,6 @@ function mousePressed() {
 function touchStarted() {
   if (!audioStarted) {
     userStartAudio();
-    osc.start();
     audioStarted = true;
   }
 }
-
