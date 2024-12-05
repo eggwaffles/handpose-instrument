@@ -8,6 +8,8 @@ let instrument = 0;
 let audioStarted = false;
 let graphicsLayer;
 
+let bassOsc, bassEnv, bassPlaying = false; // Variables for bass beat
+
 function preload() {
   // Load the handPose model
   handPose = ml5.handPose();
@@ -27,7 +29,7 @@ function setup() {
   handPose.detectStart(video, gotHands);
 
   // Create oscillators for a chord (C major: C, E, G notes)
-  let frequencies = [261.63, 329.63, 392.00]; // C, E, G in Hz
+  let frequencies = [130.81, 155.56, 196.00]; // C, Eb, G in Hz (one octave lower)
   for (let i = 0; i < frequencies.length; i++) {
     let osc = new p5.Oscillator('sine');
     osc.freq(frequencies[i]);
@@ -35,6 +37,15 @@ function setup() {
     osc.start(); // Start the oscillator but set amplitude to 0 to avoid sound on startup
     oscillators.push(osc);
   }
+
+  bassOsc = new p5.Oscillator('sine');
+  bassOsc.freq(60); // Low frequency for a bass drum sound
+  bassOsc.amp(0); // Start with zero amplitude
+  bassOsc.start(); // Start the oscillator
+
+  bassEnv = new p5.Envelope();
+  bassEnv.setADSR(0.001, 0.2, 0.0, 0.1); // Quick attack and short decay for a punchy bass beat
+  bassOsc.amp(bassEnv); // Attach the envelope to the oscillator
 
   textSize(24);
   textAlign(CENTER, CENTER);
@@ -68,11 +79,18 @@ function draw() {
     instrument = 0;
   }
 
-  // Play or stop the synth based on the detected gesture
+  // synth on instrument 1
   if (instrument === 1) {
     playSynth();
   } else {
     stopSynth();
+  }
+
+  // beat on instrument 2
+  if (instrument === 2 && rightisPinched()) {
+    playPercussion();
+  } else {
+    stopPercussion();
   }
 
   // If audio hasn't started, display the instruction on the separate graphics layer
@@ -94,15 +112,43 @@ function draw() {
 
 function playSynth() {
   let indexDistance = calculateIndexTipDistance();
+  let fingersUp = countRightHandFingersUp(); // Get the number of fingers up on the right hand (excluding thumb)
+
+  // Determine base frequencies for a chord (C major chord used here)
+  let baseFrequencies = [261.63, 329.63, 392.00]; // C, E, G in Hz
+
+  // Determine the waveform type based on the number of fingers up
+  let waveType = 'sine'; // Default to sine wave
+
+  if (fingersUp === 0) {
+    waveType = 'sine'; // 0 fingers up: sine wave
+  } else if (fingersUp === 1) {
+    waveType = 'triangle'; // 1 finger up: triangle wave
+  } else if (fingersUp === 2) {
+    waveType = 'sawtooth'; // 2 fingers up: sawtooth wave
+  } else if (fingersUp === 3) {
+    waveType = 'square'; // 3 fingers up: square wave
+  } else if (fingersUp === 4) {
+    waveType = 'sine'; // 4 fingers up: sine wave (or any other type, based on your choice)
+  }
 
   if (indexDistance !== null) {
     let { dx, dy } = indexDistance;
 
-    // Assuming a distance between 0 and 300 pixels for the mapping
-    let volume = map(-dx, 50, 300, 0.1, 0.8);
-    volume = constrain(volume, 0, 0.8); // Make sure volume is within a safe range
+    // Map dx to volume (amplitude)
+    let volume = map(-dx, 80, 500, 0.1, 0.7);
+    volume = constrain(volume, 0, 0.7); // Make sure volume is within a safe range
 
+    // Map dy to frequency adjustment
+    let frequencyOffset = map(-dy, -200, 200, -40, 40); // Map dy to a frequency offset in Hz (-50 to +50 Hz)
+    frequencyOffset = constrain(frequencyOffset, -40, 40); // Ensure frequency offset is within a safe range
+
+    // Adjust frequencies and play the oscillators
     for (let i = 0; i < oscillators.length; i++) {
+      oscillators[i].setType(waveType); // Set the waveform type
+      let adjustedFrequency = baseFrequencies[i % baseFrequencies.length] + frequencyOffset;
+
+      oscillators[i].freq(adjustedFrequency); // Set the adjusted frequency
       oscillators[i].amp(volume, 0.1); // Adjust the volume smoothly over 0.1 seconds
     }
   }
@@ -122,19 +168,46 @@ function stopSynth() {
   }
 }
 
+function playPercussion() {
+  if (rightisPinched()) {
+    let indexDistance = calculateIndexTipDistance();
+
+    if (indexDistance !== null) {
+      let { dx } = indexDistance;
+
+      // Map dx to volume (amplitude) of the bass
+      let volume = map(-dx, 50, 300, 0.1, 1.0);
+      volume = constrain(volume, 0, 1.0); // Ensure the volume stays in a valid range (0 to 1)
+
+      if (bassEnv && bassOsc) {
+        bassOsc.amp(volume, 0.1); // Set the overall volume with a short fade time
+        bassEnv.play(bassOsc); // Trigger the envelope on the bass oscillator
+        bassPlaying = true; // Ensure `bassPlaying` is set to true
+      }
+    }
+  }
+}
+
+// Function to stop the bass beat
+function stopPercussion() {
+  if (bassPlaying) {
+    bassEnv.triggerRelease(); // Release the envelope
+    bassOsc.amp(0, 0.1); // Explicitly set the amplitude to 0 with a short fade
+    bassPlaying = false;
+  }
+}
+
 // Check if the left index finger is raised
 function leftIndexRaised() {
   for (let i = 0; i < hands.length; i++) {
     let hand = hands[i];
 
-    // Check if the hand is the left hand (mirrored)
     if (hand.handedness === "Right") {
       let indexTip = hand.keypoints.find(point => point.name === "index_finger_tip");
       let thumbTip = hand.keypoints.find(point => point.name === "thumb_tip");
       let middleBase = hand.keypoints.find(point => point.name === "middle_finger_mcp");
 
       if (indexTip && thumbTip && middleBase) {
-        // Check if the index finger is raised
         if (indexTip.y < thumbTip.y && indexTip.y < middleBase.y && !isLeftPalmOpen()) {
           return true;
         }
@@ -156,7 +229,6 @@ function leftTwoRaised() {
       let middleBase = hand.keypoints.find(point => point.name === "middle_finger_mcp");
 
       if (indexTip && indexBase && middleTip && middleBase) {
-        // Check if both fingers are raised
         if (indexTip.y < indexBase.y && middleTip.y < middleBase.y && !isLeftPalmOpen()) {
           return true;
         }
@@ -276,6 +348,28 @@ function calculateIndexTipDistance() {
     // Return null if one or both hands are not detected
     return null;
   }
+}
+
+function rightisPinched() {
+  for (let i = 0; i < hands.length; i++) {
+    let hand = hands[i];
+
+    // Check if the hand is the right hand (mirrored)
+    if (hand.handedness === "Left") {
+      let thumbTip = hand.keypoints.find(point => point.name === "thumb_tip");
+      let indexTip = hand.keypoints.find(point => point.name === "index_finger_tip");
+
+      if (thumbTip && indexTip) {
+        let distance = dist(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
+        
+        // If the distance between thumb tip and index tip is below 30 pixels, consider it a pinch
+        if (distance < 30) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 // Callback function when hands are detected
