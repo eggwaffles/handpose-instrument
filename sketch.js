@@ -61,9 +61,9 @@ function draw() {
   }
 
   if (isLeftPalmOpen()) {
-    instrument = 1; // Synth
+    instrument = 1; //synth
   } else if (!isLeftPalmOpen()) {
-    instrument = 2; // Percussion
+    instrument = 2; //percussion
   } else {
     instrument = 0;
   }
@@ -100,7 +100,6 @@ function draw() {
 
 function playSynth() {
   let indexDistance = calculateIndexTipDistance();
-  let fingersUp = countRightHandFingersUp();
 
   let baseFrequencies = [261.63, 329.63, 392.00];
 
