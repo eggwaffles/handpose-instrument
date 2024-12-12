@@ -332,7 +332,7 @@ function touchStarted() {
 document.getElementById("startTutorial").addEventListener("click", startTutorial);
 
 function startTutorial() {
-  const TUTORIAL_STEP_DELAY = 7000;
+  const TUTORIAL_STEP_DELAY = 5000;
   let step = 0;
 
   const tutorialSteps = [
