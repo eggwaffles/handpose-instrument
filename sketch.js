@@ -8,75 +8,64 @@ let instrument = 0;
 let audioStarted = false;
 let graphicsLayer;
 
-let bassOsc, bassEnv, bassPlaying = false; // Variables for bass beat
+let drumSounds = {}; 
 
 function preload() {
-  // Load the handPose model
   handPose = ml5.handPose();
+
+  drumSounds = {
+    hihat: 'drumset/hihat.mp3',
+    snare: 'drumset/snare.mp3',
+    kickdrum: 'drumset/kickdrum.mp3',
+    floortom: 'drumset/floortom.mp3',
+  };
 }
 
 function setup() {
-  createCanvas(640, 480);
-  // Create a separate graphics layer
+  let canvas = createCanvas(640, 480);
+  canvas.parent('sketch-container');
   graphicsLayer = createGraphics(640, 480);
 
-  // Create the webcam video and hide it
   video = createCapture(VIDEO);
   video.size(640, 480);
   video.hide();
 
-  // Start detecting hands from the webcam video
   handPose.detectStart(video, gotHands);
 
-  // Create oscillators for a chord (C major: C, E, G notes)
-  let frequencies = [130.81, 155.56, 196.00]; // C, Eb, G in Hz (one octave lower)
+  let frequencies = [130.81, 155.56, 196.00];
   for (let i = 0; i < frequencies.length; i++) {
     let osc = new p5.Oscillator('sine');
     osc.freq(frequencies[i]);
-    osc.amp(0);  // Set initial amplitude to 0
-    osc.start(); // Start the oscillator but set amplitude to 0 to avoid sound on startup
+    osc.amp(0);
+    osc.start();
     oscillators.push(osc);
   }
-
-  bassOsc = new p5.Oscillator('sine');
-  bassOsc.freq(60); // Low frequency for a bass drum sound
-  bassOsc.amp(0); // Start with zero amplitude
-  bassOsc.start(); // Start the oscillator
-
-  bassEnv = new p5.Envelope();
-  bassEnv.setADSR(0.001, 0.2, 0.0, 0.1); // Quick attack and short decay for a punchy bass beat
-  bassOsc.amp(bassEnv); // Attach the envelope to the oscillator
 
   textSize(24);
   textAlign(CENTER, CENTER);
 }
 
 function draw() {
-  // Draw the webcam video
   translate(width, 0);
   scale(-1.0, 1.0);
   image(video, 0, 0, width, height);
 
-  // Draw all the tracked hand points
   for (let i = 0; i < hands.length; i++) {
     let hand = hands[i];
     for (let j = 0; j < hand.keypoints.length; j++) {
       let keypoint = hand.keypoints[j];
-      fill(0, 255, 0);
+      fill(255, 255, 255);
       noStroke();
       circle(keypoint.x, keypoint.y, 10);
     }
   }
 
-  // Instrument selection based on hand gestures
   if (isLeftPalmOpen()) {
-    instrument = 0;
-  } else if (leftTwoRaised()) {
-    instrument = 2;
-  } else if (leftIndexRaised()) {
-    instrument = 1;
+    instrument = 1; // Synth
+  } else if (!isLeftPalmOpen()) {
+    instrument = 2; // Percussion
   } else {
-    instrument = 0;
+    instrument = 0; // No instrument
   }
 
   // synth on instrument 1
@@ -87,15 +76,15 @@ function draw() {
   }
 
   // beat on instrument 2
-  if (instrument === 2 && rightisPinched()) {
-    playPercussion();
-  } else {
-    stopPercussion();
+  if (instrument === 2 && rightisPinched() && !isPinching) {
+    playDrumSound();
+    isPinching = true;
+  } else if (instrument !== 2 || !rightisPinched()) {
+    isPinching = false;
   }
 
-  // If audio hasn't started, display the instruction on the separate graphics layer
   if (!audioStarted) {
-    graphicsLayer.clear(); // Clear previous frame
+    graphicsLayer.clear();
     translate(width, 0);
     scale(-1.0, 1.0);
     graphicsLayer.fill(255, 255, 255);
@@ -103,53 +92,35 @@ function draw() {
     graphicsLayer.textAlign(CENTER, CENTER);
     graphicsLayer.text('Click to start', width / 2, height / 2);
   } else {
-    graphicsLayer.clear(); // Clear the message once audio starts
+    graphicsLayer.clear();
   }
 
-  // Draw the graphics layer on top of the main canvas
   image(graphicsLayer, 0, 0);
 }
 
 function playSynth() {
   let indexDistance = calculateIndexTipDistance();
-  let fingersUp = countRightHandFingersUp(); // Get the number of fingers up on the right hand (excluding thumb)
+  let fingersUp = countRightHandFingersUp();
 
-  // Determine base frequencies for a chord (C major chord used here)
-  let baseFrequencies = [261.63, 329.63, 392.00]; // C, E, G in Hz
+  let baseFrequencies = [261.63, 329.63, 392.00];
 
-  // Determine the waveform type based on the number of fingers up
-  let waveType = 'sine'; // Default to sine wave
-
-  if (fingersUp === 0) {
-    waveType = 'sine'; // 0 fingers up: sine wave
-  } else if (fingersUp === 1) {
-    waveType = 'triangle'; // 1 finger up: triangle wave
-  } else if (fingersUp === 2) {
-    waveType = 'sawtooth'; // 2 fingers up: sawtooth wave
-  } else if (fingersUp === 3) {
-    waveType = 'square'; // 3 fingers up: square wave
-  } else if (fingersUp === 4) {
-    waveType = 'sine'; // 4 fingers up: sine wave (or any other type, based on your choice)
-  }
+  let waveType = 'sine';
 
   if (indexDistance !== null) {
     let { dx, dy } = indexDistance;
 
-    // Map dx to volume (amplitude)
     let volume = map(-dx, 80, 500, 0.1, 0.7);
-    volume = constrain(volume, 0, 0.7); // Make sure volume is within a safe range
+    volume = constrain(volume, 0, 0.7);
 
-    // Map dy to frequency adjustment
-    let frequencyOffset = map(-dy, -200, 200, -40, 40); // Map dy to a frequency offset in Hz (-50 to +50 Hz)
-    frequencyOffset = constrain(frequencyOffset, -40, 40); // Ensure frequency offset is within a safe range
+    let frequencyOffset = map(-dy, -200, 200, -40, 40);
+    frequencyOffset = constrain(frequencyOffset, -40, 40);
 
-    // Adjust frequencies and play the oscillators
     for (let i = 0; i < oscillators.length; i++) {
-      oscillators[i].setType(waveType); // Set the waveform type
+      oscillators[i].setType(waveType);
       let adjustedFrequency = baseFrequencies[i % baseFrequencies.length] + frequencyOffset;
 
-      oscillators[i].freq(adjustedFrequency); // Set the adjusted frequency
-      oscillators[i].amp(volume, 0.1); // Adjust the volume smoothly over 0.1 seconds
+      oscillators[i].freq(adjustedFrequency);
+      oscillators[i].amp(volume, 0.1);
     }
   }
 
@@ -158,46 +129,36 @@ function playSynth() {
   }
 }
 
-// Function to stop the synth sound
 function stopSynth() {
   if (playing) {
     for (let i = 0; i < oscillators.length; i++) {
-      oscillators[i].amp(0, 0.8); // Fade out amplitude to 0 over 0.05 seconds
+      oscillators[i].amp(0, 0.8);
     }
     playing = false;
   }
 }
 
-function playPercussion() {
-  if (rightisPinched()) {
-    let indexDistance = calculateIndexTipDistance();
+function playDrumSound() {
+  let quadrant = getRightHandQuadrant();
 
-    if (indexDistance !== null) {
-      let { dx } = indexDistance;
+  let soundFile;
+  if (quadrant === 1) {
+    soundFile = drumSounds.hihat; // Quadrant 1: Hi-hat
+  } else if (quadrant === 2) {
+    soundFile = drumSounds.snare; // Quadrant 2: Snare
+  } else if (quadrant === 3) {
+    soundFile = drumSounds.floortom; // Quadrant 3: Floor tom
+  } else if (quadrant === 4) {
+    soundFile = drumSounds.kickdrum; // Quadrant 4: Kick drum
+  }
 
-      // Map dx to volume (amplitude) of the bass
-      let volume = map(-dx, 50, 300, 0.1, 1.0);
-      volume = constrain(volume, 0, 1.0); // Ensure the volume stays in a valid range (0 to 1)
-
-      if (bassEnv && bassOsc) {
-        bassOsc.amp(volume, 0.1); // Set the overall volume with a short fade time
-        bassEnv.play(bassOsc); // Trigger the envelope on the bass oscillator
-        bassPlaying = true; // Ensure `bassPlaying` is set to true
-      }
-    }
+  if (soundFile) {
+    let newSound = loadSound(soundFile, function () {
+      newSound.play(); // Play the new instance of the sound
+    });
   }
 }
 
-// Function to stop the bass beat
-function stopPercussion() {
-  if (bassPlaying) {
-    bassEnv.triggerRelease(); // Release the envelope
-    bassOsc.amp(0, 0.1); // Explicitly set the amplitude to 0 with a short fade
-    bassPlaying = false;
-  }
-}
-
-// Check if the left index finger is raised
 function leftIndexRaised() {
   for (let i = 0; i < hands.length; i++) {
     let hand = hands[i];
@@ -217,7 +178,6 @@ function leftIndexRaised() {
   return false;
 }
 
-// Check if the left index and middle fingers are raised
 function leftTwoRaised() {
   for (let i = 0; i < hands.length; i++) {
     let hand = hands[i];
@@ -238,7 +198,6 @@ function leftTwoRaised() {
   return false;
 }
 
-// Check if the left palm is open
 function isLeftPalmOpen() {
   for (let i = 0; i < hands.length; i++) {
     let hand = hands[i];
@@ -262,7 +221,6 @@ function isLeftPalmOpen() {
 
       let isOpen = true;
 
-      // Check if all fingertips are above their respective bases
       for (let j = 0; j < fingerTips.length; j++) {
         let tip = hand.keypoints.find(point => point.name === fingerTips[j]);
         let base = hand.keypoints.find(point => point.name === fingerBases[j]);
@@ -329,23 +287,18 @@ function calculateIndexTipDistance() {
   for (let i = 0; i < hands.length; i++) {
     let hand = hands[i];
 
-    // Determine which hand is being processed
     if (hand.handedness === "Right") {
-      // This is actually the left hand due to mirroring
       leftIndexTip = hand.keypoints.find(point => point.name === "index_finger_tip");
     } else if (hand.handedness === "Left") {
-      // This is actually the right hand due to mirroring
       rightIndexTip = hand.keypoints.find(point => point.name === "index_finger_tip");
     }
   }
 
-  // Calculate dx and dy if both index tips are detected
   if (leftIndexTip && rightIndexTip) {
     let dx = rightIndexTip.x - leftIndexTip.x;
     let dy = rightIndexTip.y - leftIndexTip.y;
     return { dx, dy };
   } else {
-    // Return null if one or both hands are not detected
     return null;
   }
 }
@@ -361,7 +314,7 @@ function rightisPinched() {
 
       if (thumbTip && indexTip) {
         let distance = dist(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
-        
+
         // If the distance between thumb tip and index tip is below 30 pixels, consider it a pinch
         if (distance < 30) {
           return true;
@@ -372,12 +325,39 @@ function rightisPinched() {
   return false;
 }
 
-// Callback function when hands are detected
+function getRightHandQuadrant() {
+  for (let i = 0; i < hands.length; i++) {
+    let hand = hands[i];
+
+    // Check if the hand is the right hand
+    if (hand.handedness === "Left") {
+      let indexTip = hand.keypoints.find(point => point.name === "index_finger_tip"); // Use index finger tip as a reference point
+
+      if (indexTip) {
+        let x = indexTip.x;
+        let y = indexTip.y;
+
+        // Determine the quadrant
+        if (x < width / 2 && y < height / 2) {
+          return 2; // Quadrant 2 (Top Right)
+        } else if (x >= width / 2 && y < height / 2) {
+          return 1; // Quadrant 1 (Top Left)
+        } else if (x < width / 2 && y >= height / 2) {
+          return 4; // Quadrant 4 (Bottom Right)
+        } else if (x >= width / 2 && y >= height / 2) {
+          return 3; // Quadrant 3 (Bottom Left)
+        }
+      }
+    }
+  }
+
+  return 0; // Return 0 if the right hand is not detected
+}
+
 function gotHands(results) {
   hands = results;
 }
 
-// Start the audio context and oscillator on user interaction
 function mousePressed() {
   if (!audioStarted) {
     userStartAudio();
@@ -385,10 +365,107 @@ function mousePressed() {
   }
 }
 
-// Support for touch devices
 function touchStarted() {
   if (!audioStarted) {
     userStartAudio();
     audioStarted = true;
   }
+}
+
+
+document.getElementById("startTutorial").addEventListener("click", startTutorial);
+
+function startTutorial() {
+  const TUTORIAL_STEP_DELAY = 7000; // Constant delay for each step
+  let step = 0;
+
+  const tutorialSteps = [
+    { text: "Welcome to the Virtual Hand Instrument!", condition: () => true },
+    {
+      text: "Raise your left hand with an open palm to activate Synth Mode.",
+      condition: () => isLeftPalmOpen(),
+    },
+    {
+      text: "Raise your right hand and move it around to play the synthesizer.",
+      condition: () => countRightHandFingersUp() > 0,
+    },
+    { 
+      text: "Move your right hand horizontally to adjust volume and vertically to modify pitch.", 
+      condition: () => true 
+    },
+    {
+      text: "Close your left hand into a fist to activate Drum Mode.",
+      condition: () => !isLeftPalmOpen(),
+    },
+    {
+      text: "Pinch your right index and thumb to play a beat.",
+      condition: () => rightisPinched(),
+    },
+    {
+      text: "Pinch your right hand in the top left of the screen to play the Hi-hat.",
+      condition: () => getRightHandQuadrant() === 1 && rightisPinched(),
+    },
+    {
+      text: "Pinch your right hand in the top right to play the Snare.",
+      condition: () => getRightHandQuadrant() === 2 && rightisPinched(),
+    },
+    {
+      text: "Pinch your right hand in bottom left to play the Floor Tom.",
+      condition: () => getRightHandQuadrant() === 3 && rightisPinched(),
+    },
+    {
+      text: "Pinch your right hand in bottom right to play the Kick Drum.",
+      condition: () => getRightHandQuadrant() === 4 && rightisPinched(),
+    },
+    { 
+      text: "Experiment with gestures and movements to create your unique music!", 
+      condition: () => true 
+    },
+    { 
+      text: "Enjoy your session!", 
+      condition: () => true 
+    },
+  ];
+
+  const tutorialText = document.getElementById("tutorialText");
+  const loadingBar = document.getElementById("loadingBar");
+
+  function resetLoadingBar() {
+    loadingBar.style.transition = "none";
+    loadingBar.style.width = "0%";
+  }
+
+  function startLoadingBar() {
+    loadingBar.style.transition = `width ${TUTORIAL_STEP_DELAY}ms linear`;
+    loadingBar.style.width = "100%";
+  }
+
+  function nextStep() {
+    if (step >= tutorialSteps.length) {
+      tutorialText.innerText = "";
+      resetLoadingBar();
+      return;
+    }
+
+    const currentStep = tutorialSteps[step];
+    tutorialText.innerText = currentStep.text;
+
+    if (currentStep.condition) {
+      const checkCondition = setInterval(() => {
+        if (currentStep.condition()) {
+          clearInterval(checkCondition);
+          resetLoadingBar(); // Reset before starting
+          startLoadingBar();
+
+          setTimeout(() => {
+            step++;
+            resetLoadingBar();
+            nextStep();
+          }, TUTORIAL_STEP_DELAY);
+        }
+      }, 100);
+    }
+  }
+
+  nextStep();
 }

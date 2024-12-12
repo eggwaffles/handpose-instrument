@@ -4,12 +4,21 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ml5.js handPose Webcam Example</title>
+    <title>HandPose Instrument</title>
+    <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/addons/p5.sound.min.js"></script>
     <script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
   </head>
   <body>
+    <div id="content">
+      <div id="sketch-container"></div>
+      <div id="tutorialText" style="text-align: center; margin-top: 10px; font-size: 18px; color: black;"></div>
+      <div id="loadingBarContainer">
+        <div id="loadingBar"></div>
+      </div>
+    </div>
+    <button id="startTutorial" class="tutorial-button">Start Tutorial</button>
     <script src="sketch.js"></script>
   </body>
 </html>
