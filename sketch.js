@@ -65,7 +65,7 @@ function draw() {
   } else if (!isLeftPalmOpen()) {
     instrument = 2; // Percussion
   } else {
-    instrument = 0; // No instrument
+    instrument = 0;
   }
 
   // synth on instrument 1
@@ -143,18 +143,18 @@ function playDrumSound() {
 
   let soundFile;
   if (quadrant === 1) {
-    soundFile = drumSounds.hihat; // Quadrant 1: Hi-hat
+    soundFile = drumSounds.hihat;
   } else if (quadrant === 2) {
-    soundFile = drumSounds.snare; // Quadrant 2: Snare
+    soundFile = drumSounds.snare;
   } else if (quadrant === 3) {
-    soundFile = drumSounds.floortom; // Quadrant 3: Floor tom
+    soundFile = drumSounds.floortom;
   } else if (quadrant === 4) {
-    soundFile = drumSounds.kickdrum; // Quadrant 4: Kick drum
+    soundFile = drumSounds.kickdrum;
   }
 
   if (soundFile) {
     let newSound = loadSound(soundFile, function () {
-      newSound.play(); // Play the new instance of the sound
+      newSound.play();
     });
   }
 }
@@ -240,46 +240,6 @@ function isLeftPalmOpen() {
   return false;
 }
 
-function countRightHandFingersUp() {
-  for (let i = 0; i < hands.length; i++) {
-    let hand = hands[i];
-
-    // Check if the hand is the right hand (mirrored, i.e., actually the right hand)
-    if (hand.handedness === "Left") {
-      let fingerTips = [
-        "index_finger_tip",
-        "middle_finger_tip",
-        "ring_finger_tip",
-        //"pinky_tip"
-      ];
-
-      let fingerBases = [
-        "index_finger_mcp",
-        "middle_finger_mcp",
-        "ring_finger_mcp",
-        //"pinky_mcp"
-      ];
-
-      let fingersUp = 0;
-
-      // Check each finger (index, middle, ring, pinky) to see if it's raised
-      for (let j = 0; j < fingerTips.length; j++) {
-        let tip = hand.keypoints.find(point => point.name === fingerTips[j]);
-        let base = hand.keypoints.find(point => point.name === fingerBases[j]);
-
-        if (tip && base && tip.y < base.y) {
-          fingersUp++;
-        }
-      }
-
-      // Assign and return a number from 0 to 4 based on how many fingers are up (excluding the thumb)
-      return fingersUp; // This will be a number between 0 and 4
-    }
-  }
-
-  return 0; // Default to 0 if no right hand is detected or no fingers are up
-}
-
 function calculateIndexTipDistance() {
   let leftIndexTip = null;
   let rightIndexTip = null;
@@ -307,7 +267,6 @@ function rightisPinched() {
   for (let i = 0; i < hands.length; i++) {
     let hand = hands[i];
 
-    // Check if the hand is the right hand (mirrored)
     if (hand.handedness === "Left") {
       let thumbTip = hand.keypoints.find(point => point.name === "thumb_tip");
       let indexTip = hand.keypoints.find(point => point.name === "index_finger_tip");
@@ -315,7 +274,6 @@ function rightisPinched() {
       if (thumbTip && indexTip) {
         let distance = dist(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
 
-        // If the distance between thumb tip and index tip is below 30 pixels, consider it a pinch
         if (distance < 30) {
           return true;
         }
@@ -329,29 +287,28 @@ function getRightHandQuadrant() {
   for (let i = 0; i < hands.length; i++) {
     let hand = hands[i];
 
-    // Check if the hand is the right hand
     if (hand.handedness === "Left") {
-      let indexTip = hand.keypoints.find(point => point.name === "index_finger_tip"); // Use index finger tip as a reference point
+      let indexTip = hand.keypoints.find(point => point.name === "index_finger_tip");
 
       if (indexTip) {
         let x = indexTip.x;
         let y = indexTip.y;
 
-        // Determine the quadrant
+
         if (x < width / 2 && y < height / 2) {
-          return 2; // Quadrant 2 (Top Right)
+          return 2;
         } else if (x >= width / 2 && y < height / 2) {
-          return 1; // Quadrant 1 (Top Left)
+          return 1; 
         } else if (x < width / 2 && y >= height / 2) {
-          return 4; // Quadrant 4 (Bottom Right)
+          return 4;
         } else if (x >= width / 2 && y >= height / 2) {
-          return 3; // Quadrant 3 (Bottom Left)
+          return 3;
         }
       }
     }
   }
 
-  return 0; // Return 0 if the right hand is not detected
+  return 0;
 }
 
 function gotHands(results) {
@@ -376,7 +333,7 @@ function touchStarted() {
 document.getElementById("startTutorial").addEventListener("click", startTutorial);
 
 function startTutorial() {
-  const TUTORIAL_STEP_DELAY = 7000; // Constant delay for each step
+  const TUTORIAL_STEP_DELAY = 7000;
   let step = 0;
 
   const tutorialSteps = [
@@ -454,7 +411,7 @@ function startTutorial() {
       const checkCondition = setInterval(() => {
         if (currentStep.condition()) {
           clearInterval(checkCondition);
-          resetLoadingBar(); // Reset before starting
+          resetLoadingBar();
           startLoadingBar();
 
           setTimeout(() => {
